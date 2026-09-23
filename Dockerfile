@@ -25,23 +25,33 @@ RUN apt-get update \
       cmake \
  && rm -rf /var/lib/apt/lists/*
 
-# Install into the venv hermes actually runs from (/opt/hermes/.venv/bin/python3
-# is pid 137's interpreter), not the system python: Debian 13 marks the system
-# environment externally-managed, so uv --system is refused outright (PEP 668).
+# Install into the venv hermes actually runs from, not the system python:
+# Debian marks the system environment externally-managed, so uv --system is
+# refused outright (PEP 668).
 #
-# asyncpg and aiosqlite are not optional extras here. The adapter's
-# _check_e2ee_deps() imports mautrix.crypto.store.asyncpg.PgCryptoStore, which
-# drives the sqlite crypto store as well; without them E2EE is disabled at
-# startup with a confusing error.
+# Versions are pinned to match gateway/tools/lazy_deps.py exactly. That table is
+# the gate: the adapter calls feature_missing("platform.matrix") and refuses to
+# start unless every pin matches, so a newer mautrix is a failure, not an
+# upgrade. Markdown and aiohttp-socks are in the same table and equally
+# required, despite neither being needed for encryption itself.
+#
+# asyncpg and aiosqlite are likewise not optional: the E2EE check imports
+# mautrix.crypto.store.asyncpg.PgCryptoStore, which also drives the sqlite
+# crypto store.
 RUN uv pip install --python /opt/hermes/.venv/bin/python3 \
-      "mautrix[encryption]" \
-      asyncpg \
-      aiosqlite
+      "mautrix[encryption]==0.21.0" \
+      "Markdown==3.10.2" \
+      "aiosqlite==0.22.1" \
+      "asyncpg==0.31.0" \
+      "aiohttp-socks==0.11.0"
 
-# Fail the build rather than the gateway: these are exactly the imports
-# _check_e2ee_deps() gates on, so if this succeeds E2EE will enable at runtime.
-RUN /opt/hermes/.venv/bin/python3 -c "\
-import olm, mautrix; \
-from mautrix.crypto import OlmMachine; \
-from mautrix.crypto.store.asyncpg import PgCryptoStore; \
-print('E2EE deps OK, mautrix', mautrix.__version__)"
+# Fail the build rather than the gateway. This runs the adapter's own
+# requirement check, not a hand-written import list: an import can succeed while
+# the pinned-version gate still rejects the environment, which is precisely how
+# a previous build produced an image that ran but never started Matrix.
+RUN cd /opt/hermes && /opt/hermes/.venv/bin/python3 -c "\
+import sys; sys.path.insert(0, '/opt/hermes'); \
+from tools.lazy_deps import feature_missing; \
+missing = feature_missing('platform.matrix'); \
+print('platform.matrix missing:', missing); \
+sys.exit(1) if missing else print('E2EE deps OK')"
