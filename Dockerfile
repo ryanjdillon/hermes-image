@@ -10,7 +10,8 @@
 # Pinned by digest, never by tag: upstream's :latest has rebuilt and broken
 # downstream deployments before (config schema change, memory growth, an auth
 # change), so bumping the base must be a deliberate edit.
-FROM nousresearch/hermes-agent@sha256:aae7f062985cec75d3ede5c6681acb25d82a1f9a877165f91b8ec5ca136bf14f
+# v0.21.5 (v2026.9.24).
+FROM nousresearch/hermes-agent@sha256:fca358f12efd65bfaaca05884166f15c0e2788375ca30d77061ac1ebc96452b7
 
 USER root
 
@@ -32,18 +33,20 @@ RUN apt-get update \
 # Versions are pinned to match gateway/tools/lazy_deps.py exactly. That table is
 # the gate: the adapter calls feature_missing("platform.matrix") and refuses to
 # start unless every pin matches, so a newer mautrix is a failure, not an
-# upgrade. Markdown and aiohttp-socks are in the same table and equally
-# required, despite neither being needed for encryption itself.
+# upgrade. aiohttp and aiohttp-socks are in the same table and equally
+# required, despite neither being needed for encryption itself. Re-read the
+# table on every base bump: v0.21.5 moved mautrix to 0.21.1, added aiohttp and
+# dropped Markdown.
 #
 # asyncpg and aiosqlite are likewise not optional: the E2EE check imports
 # mautrix.crypto.store.asyncpg.PgCryptoStore, which also drives the sqlite
 # crypto store.
 RUN uv pip install --python /opt/hermes/.venv/bin/python3 \
-      "mautrix[encryption]==0.21.0" \
-      "Markdown==3.10.2" \
+      "mautrix[encryption]==0.21.1" \
       "aiosqlite==0.22.1" \
       "asyncpg==0.31.0" \
-      "aiohttp-socks==0.11.0"
+      "aiohttp-socks==0.11.0" \
+      "aiohttp==3.14.3"
 
 # Fail the build rather than the gateway. This runs the adapter's own
 # requirement check, not a hand-written import list: an import can succeed while
